@@ -1,0 +1,3 @@
+import {authorize,bucket,db,json,safe} from '../../../../lib/server';
+export const dynamic='force-dynamic';
+export async function GET(req:Request,{params}:{params:Promise<{id:string}>}){return safe(async()=>{await authorize(req);const {id}=await params;if(!/^[a-z0-9-]{36}$/.test(id))return json({error:'找不到照片。'},404);const meta=await db().prepare('SELECT mime FROM assets WHERE id=?').bind(id).first<{mime:string}>();if(!meta)return json({error:'找不到照片。'},404);const object=await bucket().get(id);if(!object)return json({error:'照片暫時無法讀取。'},404);return new Response(object.body,{headers:{'Content-Type':meta.mime,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'"}})})}
