@@ -19,3 +19,38 @@ test('進度更新不改狀態，保留多次訊息、時間與原始資料',()=
 test('待驗收可補充進度，不修改修復證據或回報時間',()=>{const ready=applyAction(pending(),'designer','report','已修復',['repair'],now),updated=applyAction(ready,'designer','update','週五可陪同驗收',[],'2030-01-01T11:00:00Z');assert.equal(updated.status,'ready');assert.equal(updated.rounds[0].reportedAt,now);assert.equal(updated.rounds[0].reportNote,'已修復');assert.deepEqual(updated.rounds[0].repairPhotos,['repair']);assert.equal(updated.rounds[0].updates.length,1)});
 test('更新進度限制角色、空白內容與已結案項目',()=>{for(const portal of ['owner','visitor'])assert.throws(()=>applyAction(pending(),portal,'update','訊息',[],now),e=>e.status===403);assert.throws(()=>applyAction(pending(),'designer','update','  ',[],now),e=>e.status===400);assert.throws(()=>applyAction(pending(),'designer','update','a'.repeat(2001),[],now),e=>e.status===400);const passed=applyAction(pending(),'owner','pass','',[],now);assert.throws(()=>applyAction(passed,'designer','update','訊息',[],now),e=>e.status===409)});
 test('不通過後進度保留在原輪次，新一輪訊息不改寫歷史',()=>{const updated=applyAction(pending(),'designer','update','已安排師傅',[],now),rejected=applyAction(updated,'owner','fail','請修完整',[],now),closed=structuredClone(rejected.rounds[0]),next=applyAction(rejected,'designer','update','重新安排',[],now);assert.deepEqual(next.rounds[0],closed);assert.equal(next.rounds[1].updates.length,1);assert.equal(next.rounds[1].updates[0].note,'重新安排')});
+
+test('誤按直接通過可撤銷，回待修復且保留照片及更正紀錄',()=>{
+ const before=pending(),passed=applyAction(before,'owner','pass','',[],now),snapshot=structuredClone(passed),undone=applyAction(passed,'owner','undo','',[],now);
+ assert.equal(undone.status,'pending');assert.equal(undone.rounds.length,1);assert.deepEqual(undone.rounds,before.rounds);
+ assert.deepEqual(undone.changes[0].previousRound,snapshot.rounds[0]);assert.equal(undone.changes[0].action,'undo');assert.equal(undone.revision,2);assert.deepEqual(passed,snapshot);
+});
+test('撤銷修復後的通過會回待驗收，保留修復證據與進度',()=>{
+ const updated=applyAction(pending(),'designer','update','進度',[],now),ready=applyAction(updated,'designer','report','修好了',['repair'],now),passed=applyAction(ready,'owner','pass','OK',[],now),undone=applyAction(passed,'owner','undo','',[],now);
+ assert.equal(undone.status,'ready');assert.deepEqual(undone.rounds,ready.rounds);
+});
+test('不通過可在下一輪尚未處理時撤銷，撤回輪次的文字照片保留於更正紀錄',()=>{
+ const before=pending(),failed=applyAction(before,'owner','fail','誤選原因',['new-photo'],now),undone=applyAction(failed,'owner','undo','',[],now);
+ assert.deepEqual(undone.rounds,before.rounds);assert.equal(undone.changes[0].previousRound.verdict,'fail');assert.equal(undone.changes[0].removedRound.description,'誤選原因');assert.deepEqual(undone.changes[0].removedRound.photos,['new-photo']);
+});
+test('下一輪開始處理後不可撤銷前次不通過，避免覆蓋新紀錄',()=>{
+ const failed=applyAction(pending(),'owner','fail','原因',[],now);
+ for(const action of ['update','report']){const started=applyAction(failed,'designer',action,'已處理',[],now);assert.throws(()=>applyAction(started,'owner','undo','',[],now),e=>e.status===409)}
+});
+test('只有屋主能撤銷驗收；沒有驗收時不提供憑空復原',()=>{
+ const passed=applyAction(pending(),'owner','pass','',[],now);
+ for(const portal of ['designer','visitor'])assert.throws(()=>applyAction(passed,portal,'undo','',[],now),e=>e.status===403);
+ assert.throws(()=>applyAction(pending(),'owner','undo','',[],now),e=>e.status===409);
+});
+test('刪除及恢復保留狀態、照片、全部輪次與原問題編號',()=>{
+ for(const state of [pending(),applyAction(pending(),'designer','report','完成',['repair'],now),applyAction(pending(),'owner','pass','',[],now)]){
+  const trashed=applyAction(state,'owner','delete','',[],now),restored=applyAction(trashed,'owner','restore','',[],now);
+  assert.equal(trashed.deletedAt,now);assert.equal(restored.deletedAt,null);assert.equal(restored.status,state.status);assert.equal(restored.id,state.id);assert.deepEqual(restored.rounds,state.rounds);assert.equal(restored.planId,state.planId);assert.equal(restored.x,state.x);assert.equal(restored.revision,state.revision+2);assert.deepEqual(restored.changes.map(c=>c.action),['delete','restore']);
+ }
+});
+test('回收筒問題不可再修改或重複刪除，恢復後才可處理',()=>{
+ const trashed=applyAction(pending(),'owner','delete','',[],now);
+ for(const action of ['delete','undo','pass','fail','update','report'])assert.throws(()=>applyAction(trashed,'owner',action,'原因',[],now),e=>e.status===409);
+ assert.throws(()=>applyAction(pending(),'owner','restore','',[],now),e=>e.status===409);
+ for(const portal of ['designer','visitor']){assert.throws(()=>applyAction(pending(),portal,'delete','',[],now),e=>e.status===403);assert.throws(()=>applyAction(trashed,portal,'restore','',[],now),e=>e.status===403)}
+});

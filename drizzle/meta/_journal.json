@@ -8,6 +8,13 @@
       "when": 1791359778546,
       "tag": "0000_groovy_angel",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1791438762115,
+      "tag": "0001_normal_joystick",
+      "breakpoints": true
     }
   ]
 }

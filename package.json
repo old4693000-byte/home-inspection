@@ -12,7 +12,7 @@
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/workflow.test.mjs",
-    "test:integration": "node tests/integration.mjs",
+    "test:integration": "node tests/integration.mjs && node tests/lifecycle.integration.mjs",
     "db:local": "wrangler d1 migrations apply DB --local --persist-to .wrangler/state --config wrangler.jsonc",
     "db:remote": "wrangler d1 migrations apply DB --remote --config wrangler.jsonc",
     "db:generate": "drizzle-kit generate",
